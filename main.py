@@ -1,45 +1,55 @@
+# This code is based on the following example:
+# https://discordpy.readthedocs.io/en/stable/quickstart.html#a-minimal-bot
+
 import os
-from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Depends
-from telegram import Update, Bot
-from pydantic import BaseModel
+import discord
+from keep import keep_alive
+import asyncio
 
-class TelegramUpdate(BaseModel):
-    update_id: int
-    message: dict
+intents = discord.Intents.default()
+intents.message_content = True
 
-app = FastAPI()
+client = discord.Client(intents=intents)
 
-# Load variables from .env file if present
-load_dotenv()
 
-# Read the variable from the environment (or .env file)
-bot_token = os.getenv('BOT_TOKEN')
-secret_token = os.getenv("SECRET_TOKEN")
-# webhook_url = os.getenv('CYCLIC_URL', 'http://localhost:8181') + "/webhook/"
+@client.event
+async def on_ready():
+  print('We have logged in as {0.user}'.format(client))
 
-bot = Bot(token=bot_token)
-# bot.set_webhook(url=webhook_url)
-# webhook_info = bot.get_webhook_info()
-# print(webhook_info)
 
-def auth_telegram_token(x_telegram_bot_api_secret_token: str = Header(None)) -> str:
-    # return true # uncomment to disable authentication
-    if x_telegram_bot_api_secret_token != secret_token:
-        raise HTTPException(status_code=403, detail="Not authenticated")
-    return x_telegram_bot_api_secret_token
+@client.event
+async def on_message(message):
+  if message.author == client.user:
+    return
 
-@app.post("/webhook/")
-async def handle_webhook(update: TelegramUpdate, token: str = Depends(auth_telegram_token)):
-    chat_id = update.message["chat"]["id"]
-    text = update.message["text"]
-    # print("Received message:", update.message)
+  if client.user in message.mentions:
+    #メンションをしたユーザーに1時間後にリマインドする
+    await message.channel.send(f"{message.author.mention} 10分後にリマインドします")
+    #1時間後にリマインドする
+    await asyncio.sleep(600)
+    await message.channel.send(f"{message.author.mention} 時間です")
 
-    if text == "/start":
-        with open('hello.gif', 'rb') as photo:
-            await bot.send_photo(chat_id=chat_id, photo=photo)
-        await bot.send_message(chat_id=chat_id, text="Welcome to Cyclic Starter Python Telegram Bot!")
-    else:
-        await bot.send_message(chat_id=chat_id, reply_to_message_id=update.message["message_id"], text="Yo!")
+  if message.content == "!help":
+    await message.channel.send("なんでしょう？")
 
-    return {"ok": True}
+
+try:
+  token = os.getenv("TOKEN") or ""
+  if token == "":
+    raise Exception("Please add your token to the Secrets pane.")
+  keep_alive()
+  try:
+    client.run(os.environ['TOKEN'])
+  except:
+    os.system("kill")
+
+except discord.HTTPException as e:
+  if e.status == 429:
+    print(
+        "The Discord servers denied the connection for making too many requests"
+    )
+    print(
+        "Get help from https://stackoverflow.com/questions/66724687/in-discord-py-how-to-solve-the-error-for-toomanyrequests"
+    )
+  else:
+    raise e
